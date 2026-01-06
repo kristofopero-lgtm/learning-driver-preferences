@@ -1,5 +1,6 @@
 #### Doel van dit script: te weten komen of de taskid die in de verschillende jsonfiles gebruikt worden altijd naar dezelfde route-coordinaten verwijzen, dus over de routes/days heen. ####
 #### Antwoord: nee. Eenzelfde taskid heeft niet over alle files heen dezelfde lat/lon. Er zijn best wel wat taskids met verschillende lat/lon over de files heen. ####
+### Dus: nagaan of binnen elke folder (route/day) elke taskid wel dezelfe coordinaten heeft. Zie monitor_taskids_per_folder.py ###
 
 # Import variables and functions created in index_files
 from index_files import HERE, BASE_DIR, DATA_DIR, REQUESTS_DIR, RESPONSES_DIR, OUTPUT, parse_request_file
