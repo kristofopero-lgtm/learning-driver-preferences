@@ -1,17 +1,12 @@
 
-from datetime import datetime, time
+from datetime import time
 from pathlib import Path
 import pandas as pd
 import numpy as np
 import re
 import json
 
-from src.learning_driver_preferences.paths import REQUESTS_DIR, RESPONSES_DIR, OUTPUT
-
-# Set up timeframes
-morning_window   = (time(5, 0),  time(12, 0))
-afternoon_window = (time(12, 1), time(17, 0))
-not_relevant_window = (time(17, 1), time(23, 59))
+from learning_driver_preferences.paths import REQUESTS_DIR, RESPONSES_DIR, OUTPUT
 
 # Set up regex compilations
 time_pattern_in_req_filename = re.compile(r"^(?:[^-]*-){2}(\d{6})-")
@@ -19,19 +14,6 @@ time_pattern_in_req_filename = re.compile(r"^(?:[^-]*-){2}(\d{6})-")
 ####################################
 # HELPER FUNCTIONS
 ####################################
-
-# To define if a time is within a timeframe
-def in_timeframe(t: time, timeframe: tuple[time,time]) -> bool:
-    return t is not None and timeframe[0] <= t < timeframe[1]
-
-# To classify the timeframe of the request-file (request was made when?)
-def classify_request_timeframe(time_in_isoformat: str) -> str:
-    if pd.isna(time_in_isoformat): return "unknown"
-    time = datetime.strptime(time_in_isoformat, "%H:%M:%S").time()
-    if in_timeframe(time, morning_window): return "morning"
-    if in_timeframe(time, afternoon_window): return "afternoon"
-    if in_timeframe(time, not_relevant_window): return "not-relevant"
-    return "other"
 
 # To parse time from the filename
 def parse_time_from_filename(name: str) -> time:
@@ -130,7 +112,6 @@ def index_files(requests_dir: Path, responses_dir: Path, depot_prefix: str) -> p
                 "route_id": depot_region,
                 "date": datestring,
                 "request_time": req_time_isoformat,
-                "time_bucket": classify_request_timeframe(req_time_isoformat),
                 "config_name": configuration_type,
                 "num_tasks": num_tasks,
                 "num_fixed": num_fixed,
@@ -138,7 +119,10 @@ def index_files(requests_dir: Path, responses_dir: Path, depot_prefix: str) -> p
                 "response_path": str(candidate) if candidate else None,
             })
 
+    # Sort rows
     df_files = pd.DataFrame(rows).sort_values(["route_id","date","request_time"], na_position="last")
+
+     # Persist
     df_files.to_csv(OUTPUT / "index_files.csv", index=False)
 
 ####################################
