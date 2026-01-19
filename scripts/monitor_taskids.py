@@ -3,7 +3,8 @@
 ### Dus: nagaan of binnen elke folder (route/day) elke taskid wel dezelfe coordinaten heeft. Zie monitor_taskids_per_folder.py ###
 
 # Import variables and functions created in index_files
-from index_files import HERE, BASE_DIR, DATA_DIR, REQUESTS_DIR, RESPONSES_DIR, OUTPUT, parse_request_file
+from src.learning_driver_preferences.paths import REQUESTS_DIR, OUTPUT
+from index_files import parse_request_file
 
 from pathlib import Path
 import pandas as pd

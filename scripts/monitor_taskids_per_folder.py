@@ -7,7 +7,8 @@ import re
 import pandas as pd
 import numpy as np
 
-from index_files import REQUESTS_DIR, OUTPUT, parse_request_file, parse_time_from_filename
+from src.learning_driver_preferences.paths import REQUESTS_DIR, OUTPUT
+from index_files import parse_request_file, parse_time_from_filename
 from monitor_taskids import split_depot_region_date
 
 

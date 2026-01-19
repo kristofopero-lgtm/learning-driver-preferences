@@ -2,21 +2,13 @@
 from datetime import datetime, time
 from pathlib import Path
 import pandas as pd
-import numpy as np 
-import re 
+import numpy as np
+import re
 import json
 
-# Directory stuff to refer to
-HERE = Path(__file__).resolve().parent  #this file, index_files.py in dir scripts
-BASE_DIR = HERE.parent           #1 parent up from HERE, in dir learning-driver-preferences
-DATA_DIR = BASE_DIR / "data"  
-REQUESTS_DIR = DATA_DIR / "requests"
-RESPONSES_DIR = DATA_DIR / "responses"      
-OUTPUT = DATA_DIR / "output"          
+from src.learning_driver_preferences.paths import REQUESTS_DIR, RESPONSES_DIR, OUTPUT
 
-OUTPUT.mkdir(parents=True, exist_ok=True)
-
-# Set up timeframes 
+# Set up timeframes
 morning_window   = (time(5, 0),  time(12, 0))
 afternoon_window = (time(12, 1), time(17, 0))
 not_relevant_window = (time(17, 1), time(23, 59))
@@ -28,7 +20,7 @@ time_pattern_in_req_filename = re.compile(r"^(?:[^-]*-){2}(\d{6})-")
 # HELPER FUNCTIONS
 ####################################
 
-# To define if a time is within a timeframe 
+# To define if a time is within a timeframe
 def in_timeframe(t: time, timeframe: tuple[time,time]) -> bool:
     return t is not None and timeframe[0] <= t < timeframe[1]
 
@@ -41,7 +33,7 @@ def classify_request_timeframe(time_in_isoformat: str) -> str:
     if in_timeframe(time, not_relevant_window): return "not-relevant"
     return "other"
 
-# To parse time from the filename 
+# To parse time from the filename
 def parse_time_from_filename(name: str) -> time:
     timestring_from_filename = time_pattern_in_req_filename .match(name)
     if not  timestring_from_filename:
@@ -66,7 +58,7 @@ def try_int(value):
     except (TypeError, ValueError):
         return str(value) if value is not None else None
 
-# Parse the elements in the request file into a dict 
+# Parse the elements in the request file into a dict
 def parse_request_file(path: Path):
     json_data = try_read_json(path)
     dict_with_json_data = {"configurationName": None, "tasks": [], "fixedTasks": set()}
@@ -88,20 +80,20 @@ def parse_request_file(path: Path):
 # BASE FUNCTION: INDEX FILES
 ####################################
 
-# Index input request- and response-files into 1 dataframe 
+# Index input request- and response-files into 1 dataframe
 def index_files(requests_dir: Path, responses_dir: Path, depot_prefix: str) -> pd.DataFrame:
     rows = []
     for req_depot_region_datestring_dir in sorted(requests_dir.glob(f"{depot_prefix}*")):
         if not req_depot_region_datestring_dir.is_dir(): continue
 
         folder_name = req_depot_region_datestring_dir.name  # e.g. 0521_300-20220617
-        
+
         if "-" not in folder_name: continue
-        
+
         depot_region, datestring = folder_name.split("-")
-        
+
         if not depot_region.startswith(depot_prefix): continue
-        
+
         resp_depot_region_datestring_dir = responses_dir / folder_name
 
         for req_file in sorted(req_depot_region_datestring_dir.glob("*.json")):
@@ -121,7 +113,7 @@ def index_files(requests_dir: Path, responses_dir: Path, depot_prefix: str) -> p
                 candidate = exact_path
             else:
                 # nearest in time among response files with same prefix
-      
+
                 req_time_to_seconds = to_sec(req_time)
                 resp_file_closest_to_req_file, smallest_delta = None, None
                 for resp_file in sorted(resp_depot_region_datestring_dir.glob(f"{depot_region}-{datestring}-*.txt")):
@@ -152,6 +144,6 @@ def index_files(requests_dir: Path, responses_dir: Path, depot_prefix: str) -> p
 ####################################
 # RUN THE INDEX_FILES
 ####################################
- 
-if __name__ == "__main__": 
+
+if __name__ == "__main__":
     df = index_files(REQUESTS_DIR, RESPONSES_DIR, "0521")
