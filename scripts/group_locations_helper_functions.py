@@ -30,6 +30,12 @@ def group_locations_df(
     # Convert meters to degrees (approximation valid for small distances)
     eps_degrees = eps_meters / 111_000.0
 
+     # Work on a copy to avoid side effects
+    df = df.copy()
+
+    # Clear existing loc_id values
+    df['loc_id'] = np.nan
+
     # Extract coordinates
     coords = df[['lat', 'lon']].to_numpy()
 
