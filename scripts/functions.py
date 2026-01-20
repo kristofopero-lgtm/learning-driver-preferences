@@ -5,6 +5,8 @@ import pandas as pd
 
 def create_df_of_requests(path_to_parent_folder):
     dirs = os.listdir(path_to_parent_folder)
+    if "README.txt" in dirs:
+        dirs.pop(dirs.index("README.txt")) # Remove README.txt folder
 
     rows = []
 
