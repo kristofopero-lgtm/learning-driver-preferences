@@ -53,3 +53,62 @@ def group_locations_df(
     df['loc_id'] = db.labels_
 
     return df
+
+
+
+def add_max_distance_per_loc_id(
+    df: pd.DataFrame,
+    lat_col: str = "lat",
+    lon_col: str = "lon",
+    loc_id_col: str = "loc_id",
+    output_col: str = "max_group_distance_m"
+) -> pd.DataFrame:
+    """
+    Adds a column containing the maximum distance (in meters) between
+    any two points sharing the same loc_id.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame containing latitude, longitude, and loc_id columns.
+    lat_col : str
+        Latitude column name.
+    lon_col : str
+        Longitude column name.
+    loc_id_col : str
+        Location group ID column name.
+    output_col : str
+        Name of the output column.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with an added column containing max intra-group distance in meters.
+    """
+
+    df = df.copy()
+
+    # Approx conversion: degrees → meters
+    METERS_PER_DEGREE = 111_000.0
+
+    max_distances = {}
+
+    for loc_id, group in df.groupby(loc_id_col):
+        if len(group) < 2:
+            max_distances[loc_id] = 0.0
+            continue
+
+        coords = group[[lat_col, lon_col]].to_numpy()
+
+        # Compute bounding box max distance (fast and sufficient)
+        lat_range = coords[:, 0].max() - coords[:, 0].min()
+        lon_range = coords[:, 1].max() - coords[:, 1].min()
+
+        max_distances[loc_id] = np.sqrt(
+            lat_range ** 2 + lon_range ** 2
+        ) * METERS_PER_DEGREE
+
+    df[output_col] = df[loc_id_col].map(max_distances)
+
+    return df
+
