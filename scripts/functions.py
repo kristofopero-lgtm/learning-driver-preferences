@@ -26,7 +26,7 @@ def create_df_of_requests(path_to_parent_folder):
                     fixed_tasks = [task["taskId"] for task in data["fixedTasks"]]
                     for task in tasks:
                         row = {}
-                        row_id = file.split('.')[-2] + '-' + task["id"]
+                        row_id = file.split('.')[-2] + '-' + task["id"]                        
                         row["row_id"] = row_id
                         row["route_id"] = route_id
                         row["date"] = date
@@ -35,8 +35,11 @@ def create_df_of_requests(path_to_parent_folder):
                         row["request_type"] = request_type
                         row["task_id"] = task["id"]
                         loc = task["address"]
-                        row["lat"] = loc["latitude"]
-                        row["lon"] = loc["longitude"]
+                        lat = loc["latitude"]
+                        lon = loc["longitude"]
+                        row["lat"] = lat
+                        row["lon"] = lon
+                        row["location_id"] = str(int(lat * 10 ** 8)) + str(int(lon * 10 ** 8))
                         row["fixed"] = True if row["task_id"] in fixed_tasks else False
                         row["position_fixed"] = (
                             fixed_tasks.index(row["task_id"]) if row["fixed"] else None
