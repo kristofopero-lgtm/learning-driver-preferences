@@ -7,8 +7,10 @@ from pathlib import Path
 from learning_driver_preferences.paths import OUTPUT
 
 # Set up timeframes
-first_optimalisation_round = (time(5, 0),  time(8, 0))
-second_optimalisation_round = (time(8, 1), time(11, 0))
+# Indien geen second_optimalization_round: zet tuple op (time(0, 0), time(0, 0))
+# En dan: first_optimalization_round:  (time(5, 0),  time(11, 0))
+first_optimalisation_round = (time(5, 0),  time(11, 0))
+second_optimalisation_round = (time(0, 0), time(0, 0))
 not_relevant = (time(11, 1), time(23, 59))
 
 ########################################################################
@@ -30,21 +32,18 @@ def classify_request_timeframe(time_in_isoformat: str) -> str:
 
 
 ########################################################################
-# BASE FUNCTION: ANNOTATE TIME BUCKETS AND INFORMATION ABOUT REQUESTS
+# BASE FUNCTION: ANNOTATE TIME BUCKETS AND INFORMATION ABOUT REQUESTS (RUN_NUMBER AND RUN_LABEL)
 ########################################################################
 
-def annotate_time_buckets(
-    index_csv: Path | str = OUTPUT / "index_files.csv",
-    out_csv: Path | str = OUTPUT / "index_files_with_time_buckets.csv"
-    ):
+def annotate_time_buckets(input_csv, out_csv):
 
-    df_files = pd.read_csv(index_csv)
+    df_files = pd.read_csv(input_csv)
 
     # Ensure required columns exist
     required = {"route_id", "date", "request_time"}
     missing = required - set(df_files.columns)
     if missing:
-        raise KeyError(f"Missing required columns in {index_csv.name}: {sorted(missing)}")
+        raise KeyError(f"Missing required columns in {input_csv.name}: {sorted(missing)}")
 
     # Compute time buckets from request_time strings
     df_files["time_bucket"] = df_files["request_time"].apply(classify_request_timeframe)
@@ -100,7 +99,9 @@ def annotate_time_buckets(
 # RUN ANNOTATE_TIMEBUCKETS
 ########################################################################
 
-# ── CLI usage: python -m learning_driver_preferences.annotate_time_buckets
 if __name__ == "__main__":
-    result_path = annotate_time_buckets()
+    result_path = annotate_time_buckets(
+        input_csv=OUTPUT / "index_files.csv",
+        out_csv=OUTPUT / "index_files_with_time_buckets.csv"
+    )
     print(f"Annotated file written to: {result_path.resolve()}")
