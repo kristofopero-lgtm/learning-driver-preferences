@@ -1,15 +1,14 @@
-
 name: driver-preferences
 channels:
   - conda-forge
-  - defaults
+channel_priority: strict
 dependencies:
   # Core Python
   - python=3.11
 
   # Data & I/O
   - pandas=2.2.*
-  - numpy=2.0.*
+  - numpy=1.26.*        # SAFE with scipy + sklearn
   - pyarrow
   - openpyxl
 
@@ -22,11 +21,12 @@ dependencies:
   - matplotlib=3.9.*
   - seaborn=0.13.*
 
-  # Notebooks
+  # Notebooks & kernel
   - jupyterlab
   - ipywidgets=8.1
+  - ipykernel            # REQUIRED
 
-  # Notebooks collaboration helpers
+  # Collaboration helpers
   - nbstripout=0.7.1
   - nbdime=3.2.1
   - pre-commit=3.7.0
@@ -36,5 +36,5 @@ dependencies:
   - tqdm=4.66.*
   - pyyaml
 
-  # Pip
+  # Pip (empty but included)
   - pip
