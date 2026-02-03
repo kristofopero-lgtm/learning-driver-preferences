@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+from learning_driver_preferences.plot_style import set_plot_style, CUSTOM_COLORS
+set_plot_style()
+
 from pathlib import Path
-from typing import Optional, Tuple, Dict, Any, List
+from typing import Optional, Tuple, Dict, Any, List, Union
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+from ipywidgets import interact, Dropdown, ToggleButtons
+
 # ============================================================
-# YOUR HELPERS (as provided, unchanged)
+# HELPERS
 # ============================================================
 def read_inputfile(
     inputfile: str | Path,
@@ -256,10 +261,9 @@ def aggregate_trip(df_keep: pd.DataFrame) -> pd.DataFrame:
 
     return trip_table
 
-# ============================================================
-# (2) REQUESTS METRICS
-# ============================================================
-
+# ==============================================================================
+# (2) BASIC INFORMATION: NUMBER OF ROUTES, TRIPS AND REQUESTS TAKEN IN ACCOUNT
+# ==============================================================================
 def basic_information(df: pd.DataFrame, min_mean_tasks: int = 30):
     df_keep_all_tasks = filter_on_cutoff_time_and_tasks(df, min_mean_tasks=0)
     df_keep_with_min_tasks = filter_on_cutoff_time_and_tasks(df, min_mean_tasks=min_mean_tasks)
@@ -295,15 +299,11 @@ def basic_information(df: pd.DataFrame, min_mean_tasks: int = 30):
 # ================================================================
 # SUMMARIZE ROUTES AND TRIPS
 # ================================================================
+# ROUTES OR TRIPS DRIVEN PER DAY (basic statistics)
+def trips_per_day(df_keep: pd.DataFrame, return_df: bool = False):
+    # The number of trips (route_id) driven per day (date)
+    # To give an idea of the number of trips to plan in a day
 
-# ROUTES DRIVEN PER DAY (basic statistics)
-def routes_count_by_day(df_keep: pd.DataFrame, save_hist: str | None = None):
-    """
-    Returns:
-      routes_per_day_df: DataFrame[date, routes_count]
-      stats: dict with mean, median, percentiles
-    Produces (optional) histogram with mean/median lines.
-    """
     # Ensure date is datetime
     dates = pd.to_datetime(df_keep["date"], errors="coerce")
     routes_per_day = (
@@ -313,38 +313,44 @@ def routes_count_by_day(df_keep: pd.DataFrame, save_hist: str | None = None):
                .sort_index()
     )
 
-    route_stats = pd.DataFrame([{
+    routes_per_day= pd.DataFrame([{
         "count_days": int(routes_per_day.shape[0]),
         "mean_routes_per_day": float(routes_per_day.mean()),
         "median_routes_per_day": float(routes_per_day.median()),
-        "p10": float(routes_per_day.quantile(0.10)),
-        "p25": float(routes_per_day.quantile(0.25)),
-        "p75": float(routes_per_day.quantile(0.75)),
-        "p90": float(routes_per_day.quantile(0.90)),
     }])
 
-    return route_stats
+    return routes_per_day if return_df is True else None
 
+# PLOT: TRIPS OR ROUTES DRIVEN PER DAY AND PER WEEKDAY (distribution/histogram and boxplot)
+def trips_per_day_plot(
+    df_keep: pd.DataFrame,
+    save_plots: bool = True,
+    show_plots: bool = True,
+    output_dir: Optional[Union[Path, str]] = None,
+    return_df: bool = False
+    ):
 
-# ROUTES DRIVEN PER WEEKDAY (boxplot)
-def routes_count_boxplot_by_weekday(df_keep: pd.DataFrame, save_plots: bool = True, show_plots: bool = True, output_dir: Optional[Path | str] = None, return_df: bool = False):
-    """
-    Builds a boxplot of routes/day by weekday.
-    Returns:
-      routes_by_weekday_df: date-level table with [date, weekday, routes_count]
-    """
+    # Plot of the number of trips driven during a day:
+        # a histogram/distribution of the number of trips during a day
+        # a boxplot of the number of trips driven per weekday
+
     df = df_keep.copy()
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
-    # One row per date: routes_count
+
+    # One row per date: number of routes
     routes_by_day = (
-        df.groupby("date")["route_id"].nunique().reset_index(name="routes_count")
+        df.groupby("date")["route_id"]
+        .nunique()
+        .reset_index(name="routes_count")
     )
     routes_by_day["weekday"] = routes_by_day["date"].dt.day_name()
 
-    # order Mon..Sun (only keep present labels)
-    order = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
-    labels = [d for d in order if d in routes_by_day["weekday"].unique()]
+    # Order weekdays
+    order = ["Monday", "Tuesday", "Wednesday", "Thursday",
+             "Friday", "Saturday", "Sunday"]
+    labels = [wd for wd in order if wd in routes_by_day["weekday"].unique()]
 
+    # Determine output directory
     if save_plots:
         if output_dir is None:
             try:
@@ -354,118 +360,121 @@ def routes_count_boxplot_by_weekday(df_keep: pd.DataFrame, save_plots: bool = Tr
                 outdir = Path("output") / "summarize_routes_and_trips"
         else:
             outdir = Path(output_dir)
+
         outdir.mkdir(parents=True, exist_ok=True)
 
-        saved_path = outdir / "boxplot_routes_per_weekday"
+    # DISTRIBUTION PLOT: routes per date
+    fig1, ax1= plt.subplots()
 
-        data = [routes_by_day.loc[routes_by_day["weekday"] == wd, "routes_count"].values
-                for wd in labels]
-        plt.figure(figsize=(8,5))
-        plt.boxplot(data, labels=labels, vert=True)
-        plt.title("Routes per weekday (boxplot)")
-        plt.ylabel("Routes per day")
-        plt.tight_layout()
-        plt.savefig(saved_path, dpi=200, bbox_inches="tight", facecolor="white" )
+    counts = routes_by_day["routes_count"]
+
+    # Histogram
+    counts.plot(kind="hist", bins=14, ax=ax1, label="Histogram")
+
+    ax1.set_xticks(np.arange(counts.min(), counts.max() + 1, 10))
+    ax1.set_title("Distribution of routes driven per day")
+    ax1.set_xlabel("Routes per day")
+    ax1.set_ylabel("Frequency")
+    ax1.legend()
+    fig1.tight_layout()
+
+    if save_plots:
+        fig1.savefig(outdir / "distribution_routes_per_day.png",
+                     dpi=200, bbox_inches="tight", facecolor="white")
+
+    if show_plots:
+        plt.show()
+
+    # BOX PLOT: routes per weekday
+    fig2, ax2 = plt.subplots()
+
+    data = [
+        routes_by_day.loc[routes_by_day["weekday"] == wd, "routes_count"].values
+        for wd in labels
+    ]
+
+    ax2.boxplot(data, labels=labels, vert=True)
+    ax2.set_title("Routes driven per weekday (boxplot)")
+    ax2.set_ylabel("Routes per day")
+    fig2.tight_layout()
+
+    if save_plots:
+        fig2.savefig(outdir / "boxplot_routes_per_weekday.png",
+                     dpi=200, bbox_inches="tight", facecolor="white")
 
     if show_plots:
         plt.show()
 
     return routes_by_day if return_df else None
 
+def trips_per_route(trip_table: pd.DataFrame, show_plots: bool = True, return_df: bool = False):
+    # How many times a route is driven during the observation period
+    # Some routes are driven more often than others
 
-# VARIABILITY IN NUMBER OF TASKS PER ROUTE
+    df= trip_table.copy()
 
-# A route (route_id) is driven on several days. Is the number of tasks assigned to each route stable across the days? So: does a route_id always has more or less the same number of tasks or does a route have one day a lot of tasks and another day much less tasks?
-# Task variability: measure used is simple coefficient of variation (cv): standard deviation divided by mean : route_stats["cv"] = route_stats["std"] / route_stats["mean"]; other possibility is to include interquartile range, but would lead us to far.
-# Interpretation: how large is the variation relative to the average size of the route?
-# Treshold for calling a route "stable" default: <0.25, can be changed in parameters
+    trips_per_route = df.groupby("route_id")["date"].nunique().rename("n_trips").sort_values(ascending=False)
+    trips_per_route_df = trips_per_route.reset_index() # df from the trips_per_route, in case needed
 
-def tasks_variability_by_route(trip_table: pd.DataFrame, var_treshold: float = 0.25, save_plots: bool = True, show_plots: bool = True, output_dir: Optional[Path | str] = None):
-    # Per-route arrays of trip task means
-    g = trip_table.groupby("route_id")["mean_tasks_trip"]
+    values = trips_per_route.to_numpy(dtype=int)
 
-    route_stats = g.agg(
-        route_days="count",
-        mean="mean",
-        median="median",
-        min="min",
-        max="max",
-        std="std",
-    ).reset_index()
-    route_stats["range"] = route_stats["max"] - route_stats["min"]
-    route_stats["cv"] = route_stats["std"] / route_stats["mean"]  # coefficient of variation
+    fig, ax = plt.subplots()
+    bins = np.arange(values.min(), values.max() + 2) - 0.5  # center bins on integers
 
-    # Stability label
-    def label(cv):
-        if pd.isna(cv): return "only_one_trip"
-        if cv < var_treshold: return "stable"
-        return "variable"
-    route_stats["stability"] = route_stats["cv"].apply(label)
+    ax.hist(values, bins=bins, edgecolor="white")
+    ax.set_xticks(np.arange(values.min(), values.max() + 1))
+    ax.set_xlabel("Number of trips per route (distinct dates)")
+    ax.set_ylabel("Number of routes")
+    ax.set_title("Distribution of trips per route")
+    ax.grid(axis="y", alpha=0.15)
 
-    df = route_stats.copy()
+    # --- 3) Percentile lines ---
+    percentiles = [5, 10, 25, 50, 90]
+    q = np.percentile(values, percentiles, method="linear")
 
-    order = ["stable", "variable", "only_one_trip"]
-    labels_present = [c for c in order if c in df["stability"].unique()]
+    # Colors
+    line_colors = {50: CUSTOM_COLORS["pline_median"]}
+    default_color = CUSTOM_COLORS['pline_others']
 
-    counts = df["stability"].value_counts().reindex(labels_present, fill_value=0)
-    total = counts.sum()
-    pct = (counts / total * 100).round(1)
+    y_top = ax.get_ylim()[1]
+    x_span = ax.get_xlim()[1] - ax.get_xlim()[0]
 
-    top15_range_task_var_routes = (
-        route_stats.sort_values("range", ascending=False)
-                    .head(15)
-                    [["route_id", "min", "max", "range"]])
+    # To avoid text collisions when several quantiles are equal, add tiny offsets
+    used_positions = {}
+    for p, x in zip(percentiles, q):
+        color = line_colors.get(p, default_color)
+        ax.axvline(x, color=color, linestyle="--", linewidth=1.5)
 
-    df_task_variability_by_route = (
-        pd.DataFrame({"category": labels_present, "count": counts.values, "pct": pct.values})
-    )
+        # Small horizontal nudge if this x already has a label
+        offset = used_positions.get(round(x, 2), 0) * (0.008 * x_span)
+        used_positions[round(x, 2)] = used_positions.get(round(x, 2), 0) + 1
 
-    # Plot simple counts bar
-    colors = {
-        "stable":      "#1f77b4",
-        "variable":    "#ff7f0e",
-        "only_one_trip": "#919496"
+        ax.text(
+            x + offset,
+            y_top * 0.95,
+            f"p{p}={int(round(x))}",
+            rotation=90,
+            va="top",
+            ha="right",
+            fontsize=9,
+            backgroundcolor=(1, 1, 1, 0.5)
+            )
 
-    }
-    bar_colors = [colors[c] for c in labels_present]
-
-    plt.figure(figsize=(8, 5))
-    plt.bar(labels_present, counts.values, color=bar_colors, edgecolor="white")
-
-    for i, v in enumerate(counts.values):
-        plt.text(i, v + max(1, total*0.015), f"{v} ({pct.values[i]:.1f}%)", ha="center")
-
-    plt.title(f"Variability in tasks for {total} routes, treshold={var_treshold})")
-    plt.ylabel("Number of routes")
-    plt.xlabel("Category")
     plt.tight_layout()
-
-    if save_plots:
-        if output_dir is None:
-            try:
-                from learning_driver_preferences.paths import OUTPUT
-                outdir = Path(OUTPUT) / "summarize_routes_and_trips"
-            except Exception:
-                outdir = Path("output") / "summarize_routes_and_trips"
-        else:
-            outdir = Path(output_dir)
-        outdir.mkdir(parents=True, exist_ok=True)
-
-        saved_path = outdir / "task_variability_per_route.png"
-        plt.savefig(saved_path, dpi=200, bbox_inches="tight", facecolor="white" )
 
     if show_plots:
         plt.show()
 
-    return route_stats, df_task_variability_by_route, top15_range_task_var_routes
+    return trips_per_route_df if return_df else None
 
-
+# ================================================================
+# SUMMARIZE NUMBER OF TASKS
+# ================================================================
 # VARIABILITY IN NUMBER OF TASKS WITHIN TRIPS
-
 # The planner makes several requests per trip (route+day). The number of tasks in a trip can change during that planning phase.
 # How often does the number of tasks change during the planning of a trip? How big is the differcence?
 
-def task_variability_within_trip(df_keep: pd.DataFrame, save_plots: bool = True, show_plots: bool = True, output_dir: Optional[Path | str] = None):
+def task_variability_within_trips(df_keep: pd.DataFrame):
     if df_keep.empty:
         return pd.DataFrame()
 
@@ -492,7 +501,6 @@ def task_variability_within_trip(df_keep: pd.DataFrame, save_plots: bool = True,
             min_tasks="min",
             max_tasks="max",
             mean_tasks="mean",
-            std_tasks=lambda x: np.std(x, ddof=1) if x.count() > 1 else 0.0,
             requests_in_trip="count",
             nunique_tasks="nunique"
         )
@@ -501,7 +509,6 @@ def task_variability_within_trip(df_keep: pd.DataFrame, save_plots: bool = True,
 
     trip_var["range_tasks"] = trip_var["max_tasks"] - trip_var["min_tasks"]
     trip_var["changed_within_trip"] = trip_var["nunique_tasks"] > 1
-    trip_var["cv_tasks"] = trip_var["std_tasks"] / trip_var["mean_tasks"]
 
     # Merge first/last
     trip_var = trip_var.merge(first_last, on=["route_id", "date"], how="left")
@@ -510,11 +517,10 @@ def task_variability_within_trip(df_keep: pd.DataFrame, save_plots: bool = True,
     summary_trip_var = {
         "total_trips": trip_var.shape[0],
         "trips_with_changes": int(trip_var["changed_within_trip"].sum()),
-        "pct_changed": float(trip_var["changed_within_trip"].mean() * 100),
-        "cv_mean": trip_var["cv_tasks"].mean(),
-        "cv_median": trip_var["cv_tasks"].median(),
-        "cv_p90": trip_var["cv_tasks"].quantile(0.90),
-        "cv_p95": trip_var["cv_tasks"].quantile(0.95),
+        "first<last":  trip_var.loc[trip_var["delta_last_first"] > 0].count(),
+        "first>last": trip_var.loc[trip_var["delta_last_first"] < 0].count(),
+        "first=last": trip_var.loc[trip_var["delta_last_first"] == 0].count(),
+        "pct_changed": float(trip_var["changed_within_trip"].mean() * 100)
     }
     summary_trip_var_df = pd.DataFrame([summary_trip_var])
 
@@ -522,36 +528,158 @@ def task_variability_within_trip(df_keep: pd.DataFrame, save_plots: bool = True,
     top15_range_task_var_trip = (
         trip_var.sort_values("range_tasks", ascending=False)
                 .head(15)
-                [["route_id", "date", "min_tasks", "max_tasks", "range_tasks"]]
+                [["route_id", "date", "first_tasks", "last_tasks", "range_tasks"]]
     )
-
-    # Plot range (difference between max and min tasks within a trip) (distribution)
-    fig, ax = plt.subplots(figsize=(6,4), dpi=150)
-    ax.hist(trip_var["range_tasks"], bins=50, color="#118D57", edgecolor="white")
-    ax.set_title("Range of Task Count Within Trips")
-    ax.set_xlabel("Max - Min Tasks (range)")
-    ax.set_ylabel("Number of Trips")
-
-    if save_plots:
-        if output_dir is None:
-            try:
-                from learning_driver_preferences.paths import OUTPUT
-                outdir = Path(OUTPUT) / "summarize_routes_and_trips"
-            except Exception:
-                outdir = Path("output") / "summarize_routes_and_trips"
-        else:
-            outdir = Path(output_dir)
-        outdir.mkdir(parents=True, exist_ok=True)
-
-        saved_path = outdir / "distribution_of_range_tasks_within_trip.png"
-
-        fig.savefig(saved_path, dpi=200, bbox_inches="tight", facecolor="white" )
-
-    if show_plots:
-        plt.show()
 
     return trip_var, summary_trip_var_df, top15_range_task_var_trip
 
+def plot_task_variability_in_trips(
+    df_trips: pd.DataFrame,
+    *,
+    route_col: str = "route_id",
+    date_col: str = "date",
+    first_col: str = "first_tasks",
+    last_col: str = "last_tasks",
+    default_mode: str = "lollipop",   # "lollipop" or "bars"
+    direction_lollipop = "vertical"   # or horizontal
+    ):
+
+    # @interactive visualize, per route_id, the number of tasks first vs last reques per trip (date), highlighting the range between them.
+
+    # --- Validate columns
+    for c in (route_col, date_col, first_col, last_col):
+        if c not in df_trips.columns:
+            raise ValueError(f"Column '{c}' not found in dataframe.")
+
+    # --- Clean copy and types
+    df = df_trips.copy()
+    df[route_col] = df[route_col].astype(str)
+    df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+    df = df.dropna(subset=[date_col])
+
+    # If duplicates per route/date exist, keep a single row
+    df = df.sort_values([route_col, date_col]).drop_duplicates([route_col, date_col], keep="last")
+
+    routes = sorted(df[route_col].unique().tolist())
+    if not routes:
+        raise ValueError("No routes found in dataframe.")
+
+    @interact(
+        route_id=Dropdown(options=routes, description="Route:"),
+        mode=ToggleButtons(options=["lollipop", "bars"], value=default_mode, description="Chart:")
+    )
+    def _show(route_id, mode):
+        sub = (
+            df.loc[df[route_col] == route_id, [date_col, first_col, last_col]]
+              .sort_values(date_col)
+              .reset_index(drop=True)
+        )
+
+        if sub.empty:
+            print(f"No trips for route {route_id}.")
+            return
+
+        # Data arrays
+        dates  = sub[date_col]
+        firsts = sub[first_col].astype(float).to_numpy()
+        lasts  = sub[last_col].astype(float).to_numpy()
+        deltas = lasts - firsts
+
+        # === LOLLIPOP / INTERVAL CHART (recommended) ===
+        if mode == "lollipop":
+            # Vertical plot
+            if direction_lollipop == "vertical":
+                x = np.arange(len(sub))
+                fig, ax = plt.subplots(figsize=(max(10, len(sub) * 0.5), 6))
+
+                for i in range(len(sub)):
+                    y0, y1 = firsts[i], lasts[i]
+                    # vertical segment at position x[i]
+                    ax.plot([x[i], x[i]], [y0, y1], color=CUSTOM_COLORS["grey"], zorder=1)
+                    ax.scatter([x[i]], [y0], color=CUSTOM_COLORS["dark_blue"], s=40, zorder=2, label="first" if i == 0 else "")
+                    ax.scatter([x[i]], [y1], color=CUSTOM_COLORS["dark_orange"], s=40, zorder=2, label="last"  if i == 0 else "")
+                    y_top = max(y0, y1)
+                    color_delta = CUSTOM_COLORS["green"] if deltas[i] >= 0 else CUSTOM_COLORS["red"]
+                    ax.text(x[i], y_top + 0.03 * (ax.get_ylim()[1] - ax.get_ylim()[0]), f"Δ {int(deltas[i])}", ha="center", va="bottom", color=color_delta, fontsize=9)
+
+                ax.set_xticks(x)
+                ax.set_xticklabels(dates.dt.strftime("%Y-%m-%d"), rotation=60, ha="right")
+                ax.set_ylabel("Tasks")
+                ax.set_title(f"First vs last tasks per trip — route {route_id}")
+                ax.grid(axis="y", alpha=0.15)
+                ax.legend(loc="upper left", frameon=False)
+
+                ymin = min(firsts.min(), lasts.min())
+                ymax = max(firsts.max(), lasts.max())
+                ax.set_ylim(max(0, ymin - 1), ymax + max(3, 0.15 * (ymax - ymin + 1)))
+
+            elif direction_lollipop == "horizontal":
+                # Horizontal plot: y = dates, x = task counts
+                y = np.arange(len(sub))
+                fig, ax = plt.subplots(figsize=(max(8, len(sub) * 0.35), max(5, len(sub) * 0.45)))
+
+                # Draw ranges as line segments and points
+                for i in range(len(sub)):
+                    x0, x1 = firsts[i], lasts[i]
+                    ax.plot([x0, x1], [y[i], y[i]], color = CUSTOM_COLORS["grey"], zorder=1)
+                    ax.scatter([x0], [y[i]],  color=CUSTOM_COLORS["dark_blue"],s=40, zorder=2, label="first" if i == 0 else "")
+                    ax.scatter([x1], [y[i]],  color=CUSTOM_COLORS["dark_orange"], s=40, zorder=2, label="last"  if i == 0 else "")
+
+                    # Annotate delta at the rightmost end
+                    color_delta = CUSTOM_COLORS["green"] if deltas[i] >= 0 else CUSTOM_COLORS["red"]
+                    x_txt = max(x0, x1)
+                    ax.text(x_txt, y[i], f"  Δ {int(deltas[i])}", va="center", ha="left",
+                            color=color_delta, fontsize=9)
+
+                # Y axis labels = dates (string)
+                ax.set_yticks(y)
+                ax.set_yticklabels(dates.dt.strftime("%Y-%m-%d"))
+                ax.invert_yaxis()  # latest at bottom
+                ax.set_xlabel("Tasks")
+                ax.set_title(f"First vs last tasks per trip — route {route_id}")
+                ax.grid(axis="x", alpha=0.15)
+                ax.legend(loc="lower right", frameon=False)
+
+                # Give a little right margin for delta labels
+                xmin = min(firsts.min(), lasts.min())
+                xmax = max(firsts.max(), lasts.max())
+                ax.set_xlim(xmin - 1, xmax + max(2, 0.06 * (xmax - xmin + 1)))
+
+            plt.tight_layout()
+            plt.show()
+
+        # === SIDE-BY-SIDE BARS ===
+        else:
+            x = np.arange(len(sub))
+            width = 0.42
+            fig, ax = plt.subplots(figsize=(max(10, len(sub) * 0.5), 5))
+
+            ax.bar(x - width/2, firsts, width, color= CUSTOM_COLORS["dark_blue"], label="first")
+            ax.bar(x + width/2, lasts,  width, color= CUSTOM_COLORS["dark_orange"], label="last")
+
+            # Range markers (optional): thin line between tops
+            for i in range(len(sub)):
+                y0 = firsts[i]
+                y1 = lasts[i]
+                ax.plot([x[i] - width/2, x[i] + width/2], [y0, y1], color=CUSTOM_COLORS["grey"], linewidth=1.5, zorder=3)
+                y_top = max(y0, y1)
+                color_delta = CUSTOM_COLORS["green"] if deltas[i] >= 0 else CUSTOM_COLORS["red"]
+                ax.text(x[i], y_top + 0.02 * (ax.get_ylim()[1] - ax.get_ylim()[0]), f"Δ {int(deltas[i])}", ha="center", va="bottom", color=color_delta, fontsize=9)
+
+            ax.set_xticks(x)
+            ax.set_xticklabels(dates.dt.strftime("%Y-%m-%d"), rotation=60, ha="right")
+            ax.set_ylabel("Tasks")
+            ax.set_title(f"First vs last tasks per trip — route {route_id}")
+            ax.legend(loc="upper left", frameon=False, ncol=2)
+            ax.grid(axis="y", alpha=0.15)
+
+            # Some headroom
+            ymin = min(firsts.min(), lasts.min())
+            ymax = max(firsts.max(), lasts.max())
+            ax.set_ylim(max(0, ymin - 1), ymax + max(2, 0.06 * (ymax - ymin + 1)))
+
+            plt.tight_layout()
+            plt.show()
 
 # ================================================================
 # SUMMARIZE REQUESTS
@@ -591,21 +719,11 @@ def summarize_requests(
     # Number of requests per trip (route/day)
     mean_requests_per_trip = df["requests_count"].mean()
     median_requests_per_trip = df["requests_count"].median()
-    p10 = df["requests_count"].quantile(0.10)
-    p25 = df["requests_count"].quantile(0.25)
-    p75 = df["requests_count"].quantile(0.75)
-    p90 = df["requests_count"].quantile(0.90)
-    iqr = p75 - p25
 
-    distribution_stats = pd.DataFrame([{
+    trip_summary = pd.DataFrame([{
         "count_trips": int(df.shape[0]),
         "mean": float(mean_requests_per_trip),
         "median": float(median_requests_per_trip),
-        "p10": float(p10),
-        "p25": float(p25),
-        "p75": float(p75),
-        "p90": float(p90),
-        "iqr": float(iqr),
     }])
 
     top15_requests_trips = df.sort_values("requests_count", ascending=False).head(15).copy()[["route_id", "date", "requests_count"]]
@@ -624,23 +742,21 @@ def summarize_requests(
 
         saved_path = outdir / "distribution_of_requests_per_trip.png"
 
-        plt.savefig(saved_path, dpi=200, bbox_inches="tight", facecolor="white" )
-        plt.figure(figsize=(8,5))
-        plt.hist(df["requests_count"].dropna().values, bins=20,
-                    color="#4C78A8", edgecolor="white")
-        plt.axvline(mean_requests_per_trip, color="red", linestyle="--", label=f"mean = {mean_requests_per_trip:.1f}")
-        plt.axvline(median_requests_per_trip, color="green", linestyle=":", label=f"median = {median_requests_per_trip:.1f}")
-        plt.title("Requests per trip (distributie)")
-        plt.xlabel("Requests per trip")
-        plt.ylabel("Frequency")
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(saved_path, dpi=200, bbox_inches="tight", facecolor="white")
+        fig1, ax1 = plt.subplots()
+        ax1.hist(df["requests_count"].dropna().values, bins=20, edgecolor="white")
+        ax1.axvline(mean_requests_per_trip, color=CUSTOM_COLORS["pline_mean"], linestyle="--", linewidth=2, label=f"mean = {mean_requests_per_trip:.1f}")
+        ax1.axvline(median_requests_per_trip, color=CUSTOM_COLORS["pline_median"], linestyle="--", linewidth=2, label=f"median = {median_requests_per_trip:.1f}")
+        ax1.set_title("Requests per trip (distributie)")
+        ax1.set_xlabel("Requests per trip")
+        ax1.set_ylabel("Frequency")
+        ax1.legend()
+        fig1.tight_layout()
+        fig1.savefig(saved_path, dpi=200, bbox_inches="tight", facecolor="white")
 
     if show_plots:
         plt.show()
 
-    # Plot: number of requests per weekday
+    # Boxplot: number of requests per weekday
     if save_plots:
         if output_dir is None:
             try:
@@ -656,17 +772,125 @@ def summarize_requests(
         order = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
         labels = [wd for wd in order if wd in df["weekday"].unique()]
         data = [df.loc[df["weekday"] == wd, "requests_count"].dropna().values for wd in labels]
-        plt.figure(figsize=(8,5))
-        plt.boxplot(data, labels=labels, vert=True)
-        plt.title("Requests per weekday (boxplot)")
-        plt.ylabel("Requests per trip")
-        plt.tight_layout()
-        plt.savefig(saved_path, dpi=200, bbox_inches="tight", facecolor="white")
+
+        fig2, ax2  = plt.subplots()
+        ax2.boxplot(data, labels=labels, vert=True)
+        ax2.set_title("Requests per weekday (boxplot)")
+        ax2.set_ylabel("Requests per trip")
+        fig2.tight_layout()
+        fig2.savefig(saved_path, dpi=200, bbox_inches="tight", facecolor="white")
 
     if show_plots:
         plt.show()
 
-    return route_summary, distribution_stats, top15_requests_routes, top15_requests_trips
+    return route_summary, trip_summary, top15_requests_routes, top15_requests_trips
+
+def plot_requests_and_tasks_per_trip(
+    trip_table: pd.DataFrame,
+    *,
+    route_col: str = "route_id",
+    date_col: str = "date",
+    req_col: str = "requests_count",
+    tasks_col: str = "mean_tasks_trip",
+    default_view: str = "both",   # "requests", "tasks", "both"
+    sort_by_date: bool = True
+):
+    # Validate columns
+    for c in (route_col, date_col, req_col, tasks_col):
+        if c not in trip_table.columns:
+            raise ValueError(f"Column '{c}' not found in dataframe.")
+
+    # Clean copy & dtypes
+    df = trip_table.copy()
+    df[route_col] = df[route_col].astype(str)
+    df[date_col]  = pd.to_datetime(df[date_col], errors="coerce")
+    df = df.dropna(subset=[date_col])
+
+    # If duplicates per route/date exist, aggregate (sum requests, mean tasks)
+    df = (
+        df.groupby([route_col, date_col], as_index=False)
+           .agg({req_col: "sum", tasks_col: "mean"})
+    )
+
+    routes = sorted(df[route_col].unique().tolist())
+    if not routes:
+        raise ValueError("No routes found in dataframe.")
+
+    @interact(
+        route_id=Dropdown(options=routes, description="Route:"),
+        view=ToggleButtons(options=["requests", "tasks", "both"], value=default_view, description="Show:")
+    )
+    def _show(route_id, view):
+        sub = df.loc[df[route_col] == route_id, [date_col, req_col, tasks_col]].copy()
+        if sub.empty:
+            print(f"No trips for route {route_id}")
+            return
+
+        if sort_by_date:
+            sub = sub.sort_values(date_col)
+
+        # Data arrays
+        x = np.arange(len(sub))
+        dates  = sub[date_col].dt.strftime("%Y-%m-%d").tolist()
+        reqs   = sub[req_col].astype(float).to_numpy()
+        tasks  = sub[tasks_col].astype(float).to_numpy()
+
+        # Colors
+        color_tasks = CUSTOM_COLORS["dark_blue"]
+        color_requests = CUSTOM_COLORS["dark_orange"]
+
+        if view in ("requests", "tasks"):
+            # Single-axis bar chart
+            fig, ax = plt.subplots(figsize=(max(10, len(sub) * 0.5), 5))
+            if view == "requests":
+                ax.bar(x, reqs, color=color_requests, edgecolor="white")
+                ax.set_ylabel("Requests (count)")
+                ymax = max(reqs.max(), 1)
+                title_suffix = " — requests"
+            else:
+                ax.bar(x, tasks,color=color_tasks, edgecolor="white")
+                ax.set_ylabel("Mean tasks per trip")
+                ymax = max(tasks.max(), 1)
+                title_suffix = " — mean tasks"
+
+            ax.set_title(f"{route_id}{title_suffix}")
+            ax.set_xticks(x)
+            ax.set_xticklabels(dates, rotation=60, ha="right")
+            ax.set_ylim(0, ymax * 1.15)
+            ax.grid(axis="y")
+            plt.tight_layout()
+            plt.show()
+
+        else:
+            fig, ax_tasks = plt.subplots(figsize=(max(12, len(sub) * 0.55), 5))
+
+            # Bars = tasks (primary y-axis)
+            ax_tasks.bar(x, tasks, color=color_tasks, edgecolor="white", label="Mean tasks / trip")
+            ax_tasks.set_ylabel("Mean tasks / trip")
+            ax_tasks.tick_params(axis='y')
+            ax_tasks.grid(axis="y")
+            ax_tasks.set_ylim(0, max(tasks.max(), 1) * 1.15)
+
+            # Line = requests (secondary y-axis)
+            ax_reqs = ax_tasks.twinx()
+            ax_reqs.plot(x, reqs, color=color_requests, label="Requests (count)")
+            ax_reqs.set_ylabel("Requests (count)")
+            ax_reqs.tick_params(axis='y')
+            ax_reqs.set_ylim(0, max(reqs.max(), 1) * 1.15)
+
+            # X axis
+            ax_tasks.set_xticks(x)
+            ax_tasks.set_xticklabels(dates, rotation=60, ha="right")
+
+            # Title & combined legend
+            ax_tasks.set_title(f"{route_id} — tasks (bars) + requests (line)")
+            h1, l1 = ax_tasks.get_legend_handles_labels()
+            h2, l2 = ax_reqs.get_legend_handles_labels()
+            ax_tasks.legend(h1 + h2, l1 + l2, loc="upper right", frameon=False)
+
+
+            fig.tight_layout()
+            plt.show()
 
 # # ============================================================
 # # SUMMARIZE TYPE OF REQUESTS (config_name)
@@ -676,6 +900,7 @@ def summarize_type_of_requests(
     trip_table: pd.DataFrame,
     save_plots: bool = True,
     show_plots: bool = True,
+    show_plots_route_level: bool = False,
     output_dir: Optional[Path | str] = None,
 ):
 
@@ -711,7 +936,125 @@ def summarize_type_of_requests(
 
     top15_routes_estimate = routes_over_threshold.head(15)[["route_id", "estimate_pct"]]
 
-    # PLOT overall mix
+    # PLOT number of request type in bar chart per route_id and per trip (on trip-level) - show with interact
+    route_col = "route_id"
+    date_col = "date"
+
+    trips_per_route_df_copy = trip_table.copy()
+
+    trips_per_route = sorted(trips_per_route_df_copy["route_id"].unique().tolist())
+
+    trips_per_route_df_copy[route_col] = trips_per_route_df_copy[route_col].astype(str)
+    trips_per_route_df_copy[date_col] = pd.to_datetime(trips_per_route_df_copy[date_col], errors="coerce")
+    trips_per_route_df_copy = trips_per_route_df_copy.dropna(subset=[date_col])
+
+    cols = ["CreateSequence", "EstimateTime", "AddToSequence"]
+
+    @interact(route_id=Dropdown(options=trips_per_route, description="Route:"))
+    def _show(route_id):
+        # Filter this route
+        sub = (
+            trips_per_route_df_copy[trips_per_route_df_copy[route_col] == route_id]
+            .groupby(date_col, as_index=False)[list(cols)]
+            .sum()
+            .sort_values(date_col)
+        )
+
+        if sub.empty:
+            print(f"No trips found for route {route_id}")
+            return
+
+        # Extract stacks
+        create  = sub[cols[0]].astype(float).to_numpy()
+        estimate  = sub[cols[1]].astype(float).to_numpy()
+        add = sub[cols[2]].astype(float).to_numpy()
+
+        x = np.arange(len(sub))
+        labels = sub["date"].dt.strftime("%Y-%m-%d")
+
+        # --- Plot ---
+        fig1, ax1 = plt.subplots(figsize=(max(10, len(sub) * 0.5), 5))
+
+        ax1.bar(x, create, label="CreateSequence")
+        ax1.bar(x, estimate, bottom=create, label="EstimeateTime")
+        ax1.bar(x, add, bottom=create+estimate, label="AddToSequence")
+
+        # Y-label and title
+        total_max = (create + estimate + add).max()
+        ax1.set_title(f"Requests per trip for route {route_id}")
+        ax1.set_ylabel("Count")
+        ax1.set_ylim(0, max(total_max, 1) * 1.15)
+
+        # X axis
+        ax1.set_xticks(x, labels, rotation=60, ha="right")
+
+        # Annotation (only if not too many bars)
+        if len(sub) <= 25:
+            for i in range(len(sub)):
+                if create[i] > 0:
+                    ax1.text(x[i], create[i]/2, f"{int(create[i])}", ha="center", va="center", color="white", fontsize=9)
+                if estimate[i] > 0:
+                    ax1.text(x[i], create[i] + estimate[i]/2, f"{int(estimate[i])}", ha="center", va="center", color="white", fontsize=9)
+                if add[i] > 0:
+                    ax1.text(x[i], create[i] + estimate[i] + add[i]/2, f"{int(add[i])}", ha="center", va="center", color="white", fontsize=9)
+
+        # Add legend
+        ax1.legend(loc="upper left", frameon=False, ncol=3)
+
+        # # Light grid
+        # fig1.grid(axis="y", alpha=0.15)
+
+        plt.tight_layout()
+        plt.show()
+
+    # PLOT number of request type in bar chart per route_id; on route-level (across days) - show with interact
+    per_route_df_copy = per_route.copy()
+
+    # Ensure route_id is index
+    if "route_id" in per_route_df_copy.columns:
+        per_route_df_copy = per_route_df_copy.set_index("route_id")
+
+    cols = ["CreateSequence", "EstimateTime", "AddToSequence"]
+
+    # Dropdown options
+    routes = per_route_df_copy.index.tolist()
+
+    @interact(route_id=Dropdown(options=routes, description="Route:"))
+    def _show(route_id):
+        row = per_route_df_copy.loc[route_id, cols]
+        create, estimate, add = row.tolist()
+
+        fig2, ax2 = plt.subplots()
+
+        # Stacked bar
+        ax2.bar([0], [create], label="CreateSequence")
+        ax2.bar([0], [estimate], bottom=create, label="EstimateTime")
+        ax2.bar([0], [add], bottom=create+estimate,  label="AddToSequence")
+
+        # Annotation
+        def annotate(y0, h, txt):
+            if h > 0:
+                ax2.text(0, y0 + h/2, txt, ha="center", va="center", color="white", fontsize=10)
+
+        annotate(0, create, f"{int(create)}")
+        annotate(create, estimate, f"{int(estimate)}")
+        annotate(estimate+create, add, f"{int(add)}")
+
+
+        ax2.set_xticks([0])
+        ax2.set_xticklabels(["Requests"])
+        ax2.set_title(f"Requests for route {route_id}")
+        ax2.set_ylabel("Count")
+        ax2.set_ylim(0, max(estimate + create + add, 1) * 1.25)
+
+        ax2.legend(loc="upper right")
+
+        if show_plots_route_level:
+            plt.show()
+        else:
+            plt.close()
+
+    # PLOT share of config_name across all requests
     if save_plots:
         if output_dir is None:
             try:
@@ -727,20 +1070,22 @@ def summarize_type_of_requests(
 
         order = ["CreateSequence", "EstimateTime", "AddToSequence"]
         vals = [cfg_pct.get(k, 0.0) for k in order]
-        colors = ["#4C78A8", "#F58518", "#54A24B"]
+        colors = [CUSTOM_COLORS["dark_blue"], CUSTOM_COLORS["dark_orange"], CUSTOM_COLORS["dark_green"]]
 
-        plt.figure(figsize=(7, 5))
-        plt.bar(order, vals, color=colors)
-        for i, v in enumerate(vals):
-            plt.text(i, v + 0.5, f"{v:.1f}%", ha="center")
+    fig3, ax3 = plt.subplots()
 
-        plt.title("Type of requests (filtered on time and tasks)")
-        plt.ylabel("% of requests")
-        plt.tight_layout()
-        plt.savefig(saved_path, dpi=200, bbox_inches="tight", facecolor="white")
+    ax3.bar(order, vals,color=colors)
+    for i, v in enumerate(vals):
+        plt.text(i, v + 0.5, f"{v:.1f}%", ha="center")
 
-        if show_plots:
-            plt.show()
+    ax3.set_title("Type of requests")
+    ax3.set_ylabel("% of requests")
+
+    fig3.tight_layout()
+    fig3.savefig(saved_path, dpi=200, bbox_inches="tight", facecolor="white")
+
+    if show_plots:
+        plt.show()
 
     # BOX PLOT: EstimateTime requests per weekday
     if save_plots:
@@ -773,49 +1118,50 @@ def summarize_type_of_requests(
         saved_path_all = outdir / "boxplot_estimatetime_per_weekday_all_trips.png"
         data_all = [tt.loc[tt["weekday"] == wd, "EstimateTime"].values for wd in labels]
 
-        plt.figure(figsize=(8, 5))
-        plt.boxplot(data_all, labels=labels, vert=True, patch_artist=True,
-                    boxprops=dict(facecolor="#F58518", alpha=0.5))
-        plt.title("EstimateTime requests per weekday (all trips)")
-        plt.ylabel("EstimateTime-requests per trip")
-        plt.tight_layout()
-        plt.savefig(saved_path_all, dpi=200, bbox_inches="tight", facecolor="white")
-        if show_plots:
-            plt.show()
+    fig4, ax4 = plt.subplots()
+    ax4.boxplot(data_all, labels=labels, vert=True, patch_artist=True,
+                boxprops=dict(facecolor=CUSTOM_COLORS["dark_orange"], alpha=0.5))
+    ax4.set_title("EstimateTime requests per weekday (all trips)")
+    ax4.set_ylabel("EstimateTime-requests per trip")
 
-    return per_route_pct, top15_routes_estimate
+    fig4.tight_layout()
+    fig4.savefig(saved_path_all, dpi=200, bbox_inches="tight", facecolor="white")
 
+    if show_plots:
+        plt.show()
 
-# # ============================================================
-# # (4) RELATIONSHIPS (#tasks vs #requests; #tasks vs Estimate/Create shares)
-# # ============================================================
-def relationship_analysis(trip_table: pd.DataFrame):
-    # Correlate workload and behavior
-    # Returns Pearson and Spearman correlations, plus simple slopes (np.polyfit).
+    return per_route, per_route_pct, top15_routes_estimate
 
-    out = {}
+# # # ============================================================
+# # # (4) RELATIONSHIPS (#tasks vs #requests; #tasks vs Estimate/Create shares)
+# # # ============================================================
+# def relationship_analysis(trip_table: pd.DataFrame):
+#     # Correlate workload and behavior
+#     # Returns Pearson and Spearman correlations, plus simple slopes (np.polyfit).
 
-    def _corr_and_slope(x: pd.Series, y: pd.Series) -> Dict[str, float]:
-        x = pd.to_numeric(x, errors="coerce")
-        y = pd.to_numeric(y, errors="coerce")
-        m = pd.DataFrame({"x": x, "y": y}).dropna()
-        if m.shape[0] < 3:
-            return {"pearson": np.nan, "spearman": np.nan, "slope": np.nan, "n": m.shape[0]}
-        pear = m["x"].corr(m["y"], method="pearson")
-        spear = m["x"].corr(m["y"], method="spearman")
-        slope = float(np.polyfit(m["x"], m["y"], 1)[0])  # y ~ a*x + b, return a
-        return {"pearson": float(pear), "spearman": float(spear), "slope": slope, "n": int(m.shape[0])}
+#     out = {}
 
-    # A) Are more tasks -> more requests?
-    out["tasks_vs_requests"] = _corr_and_slope(trip_table["mean_tasks_trip"], trip_table["requests_count"])
+#     def _corr_and_slope(x: pd.Series, y: pd.Series) -> Dict[str, float]:
+#         x = pd.to_numeric(x, errors="coerce")
+#         y = pd.to_numeric(y, errors="coerce")
+#         m = pd.DataFrame({"x": x, "y": y}).dropna()
+#         if m.shape[0] < 3:
+#             return {"pearson": np.nan, "spearman": np.nan, "slope": np.nan, "n": m.shape[0]}
+#         pear = m["x"].corr(m["y"], method="pearson")
+#         spear = m["x"].corr(m["y"], method="spearman")
+#         slope = float(np.polyfit(m["x"], m["y"], 1)[0])  # y ~ a*x + b, return a
+#         return {"pearson": float(pear), "spearman": float(spear), "slope": slope, "n": int(m.shape[0])}
 
-    # B) Are more tasks -> higher EstimateTime share?
-    out["tasks_vs_estimate_pct"] = _corr_and_slope(trip_table["mean_tasks_trip"], trip_table["estimate_pct"])
+#     # A) Are more tasks -> more requests?
+#     out["tasks_vs_requests"] = _corr_and_slope(trip_table["mean_tasks_trip"], trip_table["requests_count"])
 
-    # C) Are more tasks -> higher CreateSequence share?
-    out["tasks_vs_create_pct"] = _corr_and_slope(trip_table["mean_tasks_trip"], trip_table["create_pct"])
+#     # B) Are more tasks -> higher EstimateTime share?
+#     out["tasks_vs_estimate_pct"] = _corr_and_slope(trip_table["mean_tasks_trip"], trip_table["estimate_pct"])
 
-    # D) (Optional) Are more requests -> higher EstimateTime share?
-    out["requests_vs_estimate_pct"] = _corr_and_slope(trip_table["requests_count"], trip_table["estimate_pct"])
+#     # C) Are more tasks -> higher CreateSequence share?
+#     out["tasks_vs_create_pct"] = _corr_and_slope(trip_table["mean_tasks_trip"], trip_table["create_pct"])
 
-    return out
+#     # D) (Optional) Are more requests -> higher EstimateTime share?
+#     out["requests_vs_estimate_pct"] = _corr_and_slope(trip_table["requests_count"], trip_table["estimate_pct"])
+
+#     return out
