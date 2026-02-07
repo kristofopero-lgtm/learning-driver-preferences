@@ -84,3 +84,34 @@ def join_requests_and_responses(requests_df, responses_df):
         on='row_id',
         how="inner"
     )
+
+
+def count_tasks_per_sequence(df):
+    counted_df = (df.groupby(["route_id", "date", "time", "request_type"])["location_id"]
+        .nunique()
+        .reset_index(name="count")
+        )
+    counted_df["date"] = counted_df["date"].dt.strftime("%Y-%m-%d")
+    return counted_df
+
+
+def select_compare_start_and_end(df):
+    rows = []
+
+    for (r, d), g in df.groupby(["route_id", "date"]):
+        g_sorted = g.sort_values(by="time", ascending=True)
+        types = g_sorted["request_type"].unique().tolist()
+        create_sequence = types[::-1].index("CreateSequence") if "CreateSequence" in types else (len(types) - 1)
+        idx = len(types) - create_sequence - 1
+        counts = g_sorted["count"].to_list()
+        row = {
+            "route_id": r,
+            "date": d,
+            "count_start": counts[idx],
+            "count_end": counts[-1],
+            "abs_diff_end_start": counts[-1] - counts[idx],
+            "pct_diff_end_start": (counts[-1] - counts[idx]) / counts[idx] * 100
+        }
+        rows.append(row)
+
+    return pd.DataFrame(rows)
